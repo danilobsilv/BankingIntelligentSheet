@@ -1,46 +1,63 @@
-# Roadmap and project status
+# Public roadmap & engineering flights
 
-> This roadmap reflects the current project direction. It is not a launch commitment, and priorities can change based on testing and user feedback.
+> **Status as of November 2026.** Milestones describe internal engineering progress, not a public launch promise. “Implemented” is different from “manually checked,” and both are different from “production-ready.”
 
-## Implemented internally
+## Delivery philosophy
 
-- [x] Java 21 / Spring Boot backend and React / TypeScript frontend foundation
-- [x] PostgreSQL schema management with Flyway
-- [x] Containerized local development and automated CI
-- [x] User authentication and ownership-scoped financial resources
-- [x] Bank accounts, categories, manual transactions, and monthly checking-account summaries
-- [x] OFX upload, secure preview, review, cancellation, and atomic confirmation
-- [x] Credit-card domain and distinct card financial operations
-- [x] Experimental card CSV parser with review, classification, confirmation, and deduplication
-- [x] Integration testing with synthetic documents and PostgreSQL
+BIS uses **cohesive engineering flights**: establish financial invariants → design a limited domain increment → implement and test → review through PR/CI → verify in the browser → fold learnings into the next increment. Work is intentionally organized to avoid broad releases of unverified financial behavior.
 
-## Beta prerequisites — in progress
+```mermaid
+flowchart LR
+    F[Foundation] --> I[Safe import core]
+    I --> C[Core finance domains]
+    C --> X[Feature access & richer planning]
+    X --> R[Reporting & consolidation]
+    R --> H[MVP stabilization]
+    H --> B[Closed beta readiness review]
+```
 
-- [ ] Establish safe, scheduled retention/purging of eligible temporary preview records
-- [ ] Verify representative, authorized, anonymized bank-issued export layouts
-- [ ] Keep unsupported bank CSV ingestion disabled until compatibility is demonstrated
-- [ ] Complete privacy and security operational review
-- [ ] Establish repeatable staging deployment, backup/restore procedure, monitoring, and incident response basics
-- [ ] Validate end-user experience in an actual browser and complete pilot acceptance criteria
+## Internal engineering milestones
 
-## Planned exploration
+| Flight / theme | Internal implementation | Publicly defensible status |
+| --- | --- | --- |
+| Foundation | Java/Spring backend, React/TypeScript frontend, PostgreSQL migrations, Docker and CI | Implemented internally |
+| Identity & core finance | Authenticated user scope, accounts, categories, transactions, monthly realized summaries | Implemented internally |
+| Safe ingestion | OFX and scoped CSV profiles; review, explicit confirmation, duplicate/idempotency handling | Implemented; selected synthetic flows manually validated |
+| Credit-card domain | Independent card activity and experimental import review | Implemented; real-bank layout compatibility remains limited |
+| Feature management & Free/Pro | Operational controls, versioned access rights and quotas | Implemented internally; no public billing |
+| Budgets & goals | Monthly global/category limits, goal progress and separate movement history | Implemented; selected synthetic flows manually validated |
+| Categorization | Deterministic matching rules and explicit historical reclassification | Implemented; selected synthetic flows manually validated |
+| Manual planning | Expected income, recurring obligations and separation from actual cash flow | Implemented; selected synthetic flows manually validated |
+| Reserves & investments | Separate reserve and investment ledgers, manual valuation, partial wealth coverage | Implemented; reserve flows tested in internal validation; investment acceptance continues |
+| Monthly reports | Distinct realized, planned, card and partial-wealth scopes; CSV export | Implemented; integration edge cases remain under review |
+| MVP stabilization | Cross-module checks, UX refinement, error handling and consistency audits | **In progress** |
 
-- [ ] Additional supported bank document formats, including PDFs and spreadsheets, after format-specific verification
-- [ ] Improved classification and financial insights
-- [ ] More accessible export/reporting workflows
-- [ ] Optional advanced/premium capabilities, subject to product validation
+## What internal validation has and has not shown
 
-## Access and pricing direction
+Selected supervised tests using **synthetic data** exercised OFX confirmation and repeat import, CSV import, rule-based historical categorization, category budgets, planning records, financial-goal movements and reserve deposits/withdrawals/archive. These checks showed stable cash-flow totals under the tested separate-ledger operations.
 
-The intended product direction is **free manual uploads and free essential finance features**. No paid-tier feature list, price, release date, or public registration availability has been announced.
+They do **not** certify every use case or replace security testing, bank-issued sample validation, multi-user acceptance, restore testing, or production operations. Issues found during manual checks remain triaged before beta.
 
-## What is not currently claimed
+## Before any closed beta
 
-- Verified compatibility with actual Nubank exports
-- Production-ready public availability
-- Open banking / Open Finance account connectivity
-- Automatic matching of checking-account payments with credit-card invoices
-- Automated reconciliation of invoice totals
-- Guaranteed support for PDFs/XLS from any bank
+- [ ] Complete finance-domain regression and cross-module acceptance checks.
+- [ ] Reconcile remaining reporting and UI consistency questions.
+- [ ] Validate any advertised bank export profile against authorized, anonymized real examples.
+- [ ] Review privacy, lifecycle/retention, and operational safety controls.
+- [ ] Validate deployment, backups/restoration, monitoring, and incident readiness.
+- [ ] Establish explicit release gates and support/feedback mechanisms.
 
-This repository is a public showcase, while application implementation remains private.
+## Exploring later — not current product promises
+
+- Additional verified institution-specific formats and document parsing.
+- More advanced classification and explainable insights.
+- Better UX, accessibility and multi-period reporting.
+- Commercial upgrades only after product and operational validation.
+
+## Deliberately out of scope / not claimed
+
+No live Open Finance account connection, universal bank/PDF support, automatic matching of card invoices to checking-account debits, real-time market feeds, complete net worth, announced paid subscription price, or public launch date.
+
+The intended entry experience is **free manual uploads and essential finance organization**. Internal Free/Pro capability modeling should not be confused with an available purchase flow.
+
+The software remains proprietary and the application repositories are private.
