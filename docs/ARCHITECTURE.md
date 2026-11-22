@@ -143,7 +143,18 @@ Selected recent synthetic-browser checks confirmed import retry behavior, histor
 
 For the public stage-by-stage overview, see [Roadmap](ROADMAP.md).
 
-## 7. Disclosure boundary
+## 7. Implementation evidence behind the diagrams
+
+The diagrams are conceptual, but the private implementation follows a few concrete boundaries:
+
+- Import confirmation is a transactional application service. It rechecks preview ownership, version and expiry, locks the relevant rows, reserves the source document and writes selected account transactions before marking the preview confirmed.
+- Budget `spent` values are calculated from confirmed account transactions. Category budgets retain individual progress; a category-only set does not become a consolidated limit by addition.
+- Feature access is evaluated as operational availability plus entitlement and (where relevant) quota, followed by normal authentication and ownership checks. An unavailable provider does not silently enable an experimental operation.
+- AI attempts have persistent usage and reservation records. A provider failure can remain `UNKNOWN_BILLING`; uncertain reservations are not treated as free capacity.
+
+These are PostgreSQL/application guarantees in a modular monolith, not distributed transactions or a claim of independently deployable services. For the financial rules and import state model, see [Financial invariants](FINANCIAL_INVARIANTS.md) and [Import pipeline](IMPORT_PIPELINE.md). For the AI-specific controls, see [AI safety](AI_SAFETY.md).
+
+## 8. Disclosure boundary
 
 This document deliberately excludes internal schema structure, proprietary algorithms, full endpoint inventories, feature-provider configuration, authentication internals, deployment details, incident procedures, and security-sensitive values. It describes **engineering rationale**, not a reproducible blueprint of the private product.
 
