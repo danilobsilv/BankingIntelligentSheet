@@ -2,104 +2,174 @@
 
 # Banking Intelligent Sheet
 
-### Personal finance, with clarity and control.
+### A personal-finance workspace built around reviewable data and explicit financial meaning.
 
-**A privacy-conscious personal finance workspace built around explicit review, reliable accounting boundaries, and progressive product delivery.**
-
-[Português](README.pt-BR.md) · [Architecture & diagrams](docs/ARCHITECTURE.md) · [Engineering decisions](docs/ARCHITECTURE.md#engineering-decisions-and-trade-offs) · [Roadmap](docs/ROADMAP.md) · [Privacy](docs/PRIVACY_AND_SECURITY.md)
+[Português](README.pt-BR.md) · [Architecture](docs/ARCHITECTURE.md) · [Financial invariants](docs/FINANCIAL_INVARIANTS.md) · [Import pipeline](docs/IMPORT_PIPELINE.md) · [AI safety](docs/AI_SAFETY.md) · [Roadmap](docs/ROADMAP.md) · [Privacy and security](docs/PRIVACY_AND_SECURITY.md)
 
 ![Stage](https://img.shields.io/badge/stage-internal%20MVP%20validation-2563eb) ![Source](https://img.shields.io/badge/source-private-64748b) ![Platform](https://img.shields.io/badge/platform-web-0f766e)
 
 </div>
 
-> **Public engineering showcase — not an open-source distribution or public launch.** Backend and frontend live in private repositories. This repository documents the product, architectural reasoning, and development progress without exposing proprietary implementation.
+> **Public engineering case study — not an open-source distribution or public launch.** The application repositories are private. This repository contains the product narrative, architecture decisions and verified limitations without exposing proprietary implementation, credentials or customer data.
 
-## The problem
+## Banking Intelligent Sheet
 
-Personal financial activity is scattered across accounts, card records, statements, and spreadsheets. Importing the same statement twice, mixing card consumption with bank cash flow, or treating a future bill as an actual payment can make otherwise polished dashboards inaccurate.
+Personal-finance data is usually split between bank statements, card invoices, manual notes and future plans. The difficult part is not drawing another chart; it is preserving the meaning of each record while importing imperfect documents and allowing a person to correct the result.
 
-**Banking Intelligent Sheet (BIS)** explores a workflow where trustworthy interpretation comes before automation: **ingest → validate → review → confirm → understand**.
+BIS therefore treats automation as a proposal: **ingest → validate → review → confirm → report**. A planned bill is not a paid debit, a card purchase is not automatically a second bank expense, and a model-generated PDF extraction is not an authoritative financial record.
 
-## What has been built internally
+## Engineering highlights
 
-| Capability | Design and current scope |
-| --- | --- |
-| Accounts & transactions | User-scoped accounts, categories, manual entries, and realized monthly cash-flow reporting |
-| Statement ingestion | OFX and explicitly supported CSV profiles, with preview, review, duplicate detection, and confirmation; real-bank compatibility is format-specific and not broadly certified |
-| Credit cards | Separate card ledger and experimental import workflows; no automatic cross-ledger payment reconciliation |
-| Categorization | User-controlled matching rules, reviewable suggestions, and explicit historical reclassification |
-| Budgeting | Monthly global and category-specific spending limits, without double-counting overlapping scopes |
-| Planning | Expected income, scheduled expenses, recurring commitments, and separation from realized movements |
-| Financial goals | Goal progress and auditable contributions/withdrawals in a separate ledger |
-| Reserves & investments | Manual reserves, position movements, and valuation; partial wealth coverage rather than complete net worth |
-| Reports | Monthly realized metrics, distinct planned and card views, and CSV export |
-| Feature access | Operational feature controls separated from Free/Pro access rights; no public checkout |
+### 1. Confirmation is a financial transaction boundary
 
-These capabilities are **implemented internally**, not a claim of broad bank compatibility, production readiness, or public availability. A subset of flows has passed supervised synthetic-data browser checks; the broader MVP acceptance process continues.
+OFX and supported CSV imports are parsed into a persisted preview. The preview stores source facts, provenance and review state separately from confirmed account transactions. Confirmation runs in one PostgreSQL transaction: ownership, preview version, expiry, duplicate reservations and transaction inserts are checked before the preview is marked confirmed. If any validation fails, the write is rolled back instead of leaving half an import in the ledger. This costs an extra review step, but makes accidental posting and retry behavior explicit.
 
-## Architecture at a glance
+### 2. Ledgers are separated before they are aggregated
 
-```mermaid
-flowchart LR
-    UI[Web application] -->|Authenticated requests| API[Modular application backend]
-    API --> I[Import and review]
-    API --> F[Financial domains]
-    API --> A[Access and policy]
-    I --> DB[(Transactional database)]
-    F --> DB
-    A --> DB
-    I -->|Explicit confirmation| F
-```
+The backend keeps checking-account cash flow, credit-card activity, planning projections, goal movements, reserve movements and investment positions distinct. Reports label those scopes instead of adding every money-shaped row together. This is why a card purchase does not automatically become a bank expense and why a goal contribution does not silently debit an account. The trade-off is that a user sees several related views rather than one misleading “total”.
 
-**Why a modular monolith?** The financial workflows benefit from clear domain ownership and transaction boundaries more than they currently benefit from distributed deployment. Domain separation preserves the option to evolve later.
+### 3. Duplicate safety uses trusted evidence, not fuzzy equality
 
-**Why separate ledgers?** A planned expense is not a bank debit; a card purchase is not necessarily a second bank expense; an investment valuation is not realized income. BIS models those distinctions before presenting aggregates.
+Import confirmation reserves a statement by user, account and document digest. Trusted external transaction identifiers can be used only when the parser marks them as trusted; conflicting trusted IDs fail closed. Ambiguous records are not discarded merely because date, amount and description look similar. Database uniqueness constraints, confirmation idempotency keys and row locks make a repeated confirmation safe while preserving legitimate repeated purchases.
 
-See [architecture and trade-offs](docs/ARCHITECTURE.md) for the module map, lifecycle diagrams, and design choices.
+### 4. Budgets and alerts are derived from confirmed facts
 
-## How we deliver: engineering flights
+Monthly budgets store limits, not a second copy of spending. `spent` is derived from confirmed bank transactions using `NUMERIC`/`BigDecimal`; income is excluded from expense totals. A global budget can provide a consolidated limit, while category budgets retain their own progress and are never summed into an artificial global ceiling. Threshold alerts use persisted generations and unique keys so recalculation does not emit duplicate events.
 
-BIS is developed in **small, reviewable engineering flights**: cohesive increments with a defined domain objective, acceptance criteria, tests, and integration checkpoints.
+### 5. Access policy is three separate decisions
+
+Operational feature flags, Free/Pro entitlements and usage quotas are evaluated independently. A feature flag cannot grant a commercial right, and a Pro entitlement cannot turn on a disabled or experimental operation. The effective decision is evaluated in the backend using the authenticated user context; the React UI only reflects that decision. This separation makes a kill switch useful without changing historical data or authorization rules.
+
+### 6. AI is bounded and human-in-the-loop
+
+PDF AI import is an experimental path. Preflight checks bound PDF size, page count and estimated tokens before a paid provider call. The current parser is pinned to `gemini-3.1-flash-lite`, one generation attempt, structured JSON and a maximum output-token limit. Reservations are atomic in PostgreSQL; cache hits do not generate another request; uncertain billing remains observable as `UNKNOWN_BILLING`. The application can enforce admission limits, but cannot promise an absolute provider billing ceiling. A validated response still becomes a reviewable preview, never an automatic confirmation.
+
+## System architecture
+
+The implementation is a modular monolith: one Spring Boot application with domain packages and one transactional PostgreSQL boundary, paired with a separately developed React application.
 
 ```mermaid
-flowchart LR
-    S[Scope & invariants] --> D[Domain/API design]
-    D --> B[Implementation]
-    B --> T[Automated checks & CI]
-    T --> R[PR review & integration]
-    R --> H[Manual MVP validation]
-    H -->|Findings| S
+flowchart TB
+    USER[Authenticated user] --> WEB[React / TypeScript frontend]
+    WEB -->|REST + bearer auth| API[Spring Boot modular monolith]
+    subgraph API[Application modules]
+      AUTH[Identity & ownership]
+      IMPORT[Import parsers, previews & confirmation]
+      BANK[Accounts & checking ledger]
+      CARD[Credit-card ledger]
+      PLAN[Planning & budgets]
+      WEALTH[Goals, reserves & investments]
+      RULES[Categorization rules]
+      ACCESS[Feature flags, entitlements & quotas]
+      REPORTS[Reports & analytics]
+    end
+    AUTH -.-> IMPORT
+    AUTH -.-> BANK
+    ACCESS -.-> PLAN
+    ACCESS -.-> IMPORT
+    IMPORT --> BANK
+    BANK --> REPORTS
+    CARD --> REPORTS
+    PLAN --> REPORTS
+    WEALTH --> REPORTS
+    RULES --> IMPORT
+    API --> DB[(PostgreSQL)]
+    MIG[Flyway migrations] -.-> DB
 ```
 
-The sequence has progressed from foundations and import integrity to domain capabilities, feature access, reporting, and the current **MVP stabilization/homologation flight**. Flights are organizational milestones, not a promise of deployment frequency or independently shipped services. See the [public roadmap](docs/ROADMAP.md).
+The monolith was chosen because confirmation, ownership and financial reconciliation need a shared transaction. It avoids distributed transactions and service-to-service retries while the product is still an MVP. The cost is that module boundaries are enforced by code conventions and package ownership rather than independent deployment; scaling and deployment isolation are deferred until there is evidence they are needed.
 
-## Technology & quality
+## Key design decisions
 
-| Area | Technologies / approach |
-| --- | --- |
-| Backend | Java 21, Spring Boot, modular monolith, REST APIs |
-| Frontend | React, TypeScript, Vite, TanStack Query |
-| Persistence | PostgreSQL, Flyway-managed migrations, exact decimal money |
-| Quality | JUnit, PostgreSQL integration tests with Testcontainers, Vitest, CI |
-| Development operations | Docker, Docker Compose, GitHub Actions, separate private implementation repositories |
-| Design principles | Explicit consent and confirmation, ownership, auditability, idempotency, fail-closed experimental features |
+| Engineering problem | Chosen approach | Main trade-off | Deeper reading |
+| --- | --- | --- | --- |
+| Importing uncertain documents | Persist a preview, then require explicit confirmation | More user interaction | [Import pipeline](docs/IMPORT_PIPELINE.md) |
+| Repeating a confirmation request | Idempotency keys, document reservations and unique constraints | More state to reconcile | [Import pipeline](docs/IMPORT_PIPELINE.md) |
+| Mixing different financial meanings | Separate bank, card, planning, goal, reserve and investment ledgers | Reports need explicit scope labels | [Financial invariants](docs/FINANCIAL_INVARIANTS.md) |
+| Overlapping budget limits | Derive consolidated spend from transactions; calculate each limit independently | No single “sum of all limits” number | [Financial invariants](docs/FINANCIAL_INVARIANTS.md) |
+| Progressive access | Feature flag ∧ entitlement ∧ quota ∧ security policy | More combinations to test | [Architecture](docs/ARCHITECTURE.md) |
+| PDF automation | Conservative preflight, one structured request, deterministic validation | Limited coverage and provider dependency | [AI safety](docs/AI_SAFETY.md) |
+| Schema evolution | Flyway migrations and exact decimal columns | Changes require migration discipline | [Architecture](docs/ARCHITECTURE.md) |
 
-## Current stage and honest boundaries
+## Financial data modeling
 
-**Internal MVP validation; no public release.** Synthetic-data tests have exercised selected imports, duplicate handling, categorization, budgeting, planning, goals, and reserve movements. Testing uncovered UX refinements and integration questions still being tracked. Browser checks are not a substitute for independent security, real-bank format compatibility, recovery, or production operational reviews.
+The system distinguishes facts that are often collapsed by spreadsheet-style applications:
 
-**Not claimed:** Open Finance connectivity, universal PDF parsing, live brokerage quotations, automatic bank/card reconciliation, complete net worth, available paid checkout, or verified compatibility with every institution.
+- **Checking-account transactions** are confirmed realized cash flow. Positive and negative signed amounts are stored with account ownership and source provenance.
+- **Credit-card purchases and invoices** form a separate ledger. A card invoice payment may appear in a bank statement, but the product does not infer a purchase-to-payment relationship from description text and does not add both rows to the same expense total.
+- **Planning records** contain expected income and planned obligations. They are projections until a user records or confirms an actual movement.
+- **Financial goals** use an auditable contribution/withdrawal ledger. Moving money toward a goal does not create bank income or expense.
+- **Reserves and investments** have their own movements, positions and (for investments) manual valuation snapshots. The wealth view is explicitly partial; it is not a complete net-worth calculation.
 
-The intended product entry point remains **free manual uploads and essential features**; advanced capabilities are modeled as Free/Pro entitlements for product experimentation, with **no announced pricing or purchasing flow**.
+The same rule applies to budgets: a confirmed expense can contribute to category progress, but a pending import, a planned obligation, an income row or a duplicate skipped during confirmation cannot. Reclassifying a transaction changes its category, not its amount or ledger.
 
-## Why the source is private
+## Import pipeline
 
-BIS is an independently built product under active development. Public pages intentionally omit internal schemas, endpoint inventories, provider integration specifics, credentials, operational topology, and other sensitive implementation details. This is a **portfolio and product-update repository**, not a distribution of the application or a security assurance.
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant W as Web UI
+    participant S as Import service
+    participant P as Parser profile
+    participant DB as PostgreSQL
 
-Never post real financial data, account details, statements, or secrets in public issues. Read the [privacy and security boundary](docs/PRIVACY_AND_SECURITY.md).
+    U->>W: Select account/card and document
+    W->>S: Upload with consent (where required)
+    S->>S: Bound size, hash and validate ownership
+    S->>P: Select explicit OFX/CSV/PDF profile
+    P-->>S: Normalized entries + source evidence
+    S->>S: Validate signs, dates, schema and duplicates
+    S->>DB: Persist reviewable preview
+    DB-->>W: Preview with source fields and warnings
+    U->>W: Edit inclusion/annotations and confirm
+    W->>S: Confirm preview + version + idempotency key
+    S->>DB: Lock, revalidate and commit atomically
+    DB-->>W: Confirmed result or safe error
+```
 
-**Built by [Danilo Bruno da Silva](https://github.com/danilobsilv).**
+The parser registry is profile-specific: a passing synthetic fixture is evidence for that profile, not universal bank compatibility. PDF AI adds external-consent, budget, evidence and reconciliation gates. Invalid documents, unsupported profiles, stale versions, ownership failures and ambiguous duplicates fail closed. See the [import deep dive](docs/IMPORT_PIPELINE.md) for the state and failure model.
 
----
+## Reliability, consistency and concurrency
 
-<sub>Independent project. References to financial institutions are contextual only and do not imply partnership or endorsement.</sub>
+Financial writes use PostgreSQL transactions because updating a preview, a statement reservation, account transactions and audit state independently would permit partial confirmation. Confirmation locks the relevant user/preview/account rows, checks the optimistic preview version and uses unique constraints as a second line of defense. A repeated idempotency key returns the recorded outcome rather than inserting another transaction.
+
+The same pattern appears in other domains: budget creation serializes the per-user Free limit; rule and budget updates use versions; entitlement transitions lock the user through commit; quota operations validate that an operation key belongs to the same user, quota, window and unit count. These are local database guarantees, not claims of a distributed lock service.
+
+Identifiers generated by the model or an untrusted parser are not accepted as proof of uniqueness. Source page/evidence and trusted external IDs are retained for review, while ambiguous occurrences remain review-blocking. Rollbacks leave the confirmed ledger unchanged; uncertain AI billing is retained for operational reconciliation rather than silently released.
+
+## Feature management and AI safety
+
+Feature flags answer “is this operation available in this environment?” Entitlements answer “does this user have the right?” Quotas answer “is this usage still available?” The backend combines them, with plan denial taking precedence over an operational denial when both apply. Existing records remain readable when a write feature is disabled, and a kill switch blocks new work without rewriting financial history.
+
+For AI PDF processing, `AiBudgetGuard` estimates an upper bound from extracted text, pages and configured output allowance before reserving budget. `AiImportService` checks consent, ownership, model/configuration, cache eligibility and the persistent kill switch before the single provider call. Provider failures may be `UNKNOWN_BILLING`; the reservation is deliberately not released automatically. A successful response must contain versioned structured data, verifiable source evidence and an independently reconciled balance equation before a preview is staged.
+
+These controls are application safeguards, not a guarantee about Google's final invoice. The experimental feature is disabled by default and no provider credential belongs in the frontend. Details and operational limitations are in [AI safety](docs/AI_SAFETY.md).
+
+## Testing and engineering quality
+
+The private implementation repositories use layered checks rather than relying on one end-to-end script:
+
+- JUnit tests cover parser grammar, validation, access policy, budget calculations, error contracts and state transitions.
+- PostgreSQL/Testcontainers integration tests exercise import confirmation, ownership, migrations, budget/entitlement concurrency and repository constraints against a real database engine.
+- The frontend uses Vitest and React Testing Library for capability-aware pages, import/review state, Portuguese error mapping and query invalidation. TypeScript, ESLint, encoding checks and a production Vite build run in CI.
+- Playwright journeys are used selectively with synthetic data and disposable backends; they are evidence for the exercised path, not proof of every bank layout or production deployment scenario.
+- GitHub Actions runs Maven formatting/verification, SpotBugs informational analysis, Trivy HIGH/CRITICAL scanning and Docker builds for the backend; the frontend workflow runs dependency installation, formatting, typecheck, lint, tests and image build.
+
+Representative integration suites include import preview/confirmation failure paths, budget PostgreSQL scenarios, categorization rule persistence, entitlement/feature management, analytics and card import. The public repository does not publish private source or claim a universal coverage percentage.
+
+## Current limitations
+
+This is an internal MVP validation effort, not a public launch. OFX and CSV support is profile-specific; synthetic compatibility does not certify arbitrary bank exports. PDF AI is experimental, consent-gated and dependent on provider availability, evidence quality and budget admission. There is no Open Finance connection, no universal PDF/OCR promise, no live market-price feed, no automatic bank/card invoice reconciliation and no complete net-worth view. Free/Pro rights are modeled for controlled rollout, but checkout and announced pricing are not available.
+
+The next honest milestones are broader authorized format validation, recovery/backup and observability review, accessibility and multi-user acceptance, and a closed-beta decision based on explicit release gates. See the [roadmap](docs/ROADMAP.md) for the distinction between implemented, manually checked and production-ready work.
+
+## Further technical reading
+
+- [Architecture and trade-offs](docs/ARCHITECTURE.md) — module boundaries, access policy and the modular-monolith rationale.
+- [Financial invariants](docs/FINANCIAL_INVARIANTS.md) — ledger separation, budget semantics and consistency rules.
+- [Import pipeline](docs/IMPORT_PIPELINE.md) — parser profiles, preview lifecycle, duplicate handling and confirmation.
+- [AI safety](docs/AI_SAFETY.md) — admission budgets, cache/idempotency, unknown billing and privacy boundaries.
+- [Privacy and security](docs/PRIVACY_AND_SECURITY.md) — public disclosure limits and data-handling intentions.
+- [Public roadmap](docs/ROADMAP.md) — engineering flights and remaining release gates.
+
+The project is independently developed by [Danilo Bruno da Silva](https://github.com/danilobsilv). References to financial institutions are contextual format research only and do not imply partnership or endorsement.
