@@ -20,7 +20,7 @@ The structured response is checked for schema version, document type, dates, sig
 
 `opening balance + sum(signed movements) = closing balance`
 
-Finding a source string on a page is evidence that the model cited a location; it is not proof that the amount, sign, classification or complete coverage is correct. Ambiguous or unverifiable entries fail closed or remain review-blocking under the existing policy. A valid response never confirms transactions automatically.
+Finding a source string on a page is evidence that the model cited a location; it is not proof that the amount, sign, classification or complete coverage is correct. The signed amount is used for statement reconciliation and direction validation; if the result reaches an account preview, normal import normalization stores a positive magnitude with an explicit `INCOME`/`EXPENSE` direction. Ambiguous or unverifiable entries fail closed or remain review-blocking under the existing policy. A valid response never confirms transactions automatically.
 
 ## Privacy boundary
 

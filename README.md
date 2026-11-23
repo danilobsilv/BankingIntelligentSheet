@@ -78,8 +78,8 @@ The implementation is a modular monolith: one Spring Boot application with domai
 ```mermaid
 flowchart TB
     USER[Authenticated user] --> WEB[React / TypeScript frontend]
-    WEB -->|REST + bearer auth| API[Spring Boot modular monolith]
-    subgraph API[Application modules]
+    WEB -->|REST + bearer auth| BACKEND[Spring Boot modular monolith]
+    subgraph MODULES[Application modules]
       AUTH[Identity & ownership]
       IMPORT[Import parsers, previews & confirmation]
       BANK[Accounts & checking ledger]
@@ -100,7 +100,7 @@ flowchart TB
     PLAN --> REPORTS
     WEALTH --> REPORTS
     RULES --> IMPORT
-    API --> DB[(PostgreSQL)]
+    BACKEND --> DB[(PostgreSQL)]
     MIG[Flyway migrations] -.-> DB
 ```
 
@@ -122,11 +122,17 @@ The monolith was chosen because confirmation, ownership and financial reconcilia
 
 The system distinguishes facts that are often collapsed by spreadsheet-style applications:
 
-- **Checking-account transactions** are confirmed realized cash flow. Positive and negative signed amounts are stored with account ownership and source provenance.
+- **Checking-account transactions** are confirmed realized cash flow. The persisted `amount` is a positive `NUMERIC(19,2)` magnitude, while `direction` is explicit `INCOME` or `EXPENSE`; ownership and source provenance are stored alongside it.
 - **Credit-card purchases and invoices** form a separate ledger. A card invoice payment may appear in a bank statement, but the product does not infer a purchase-to-payment relationship from description text and does not add both rows to the same expense total.
 - **Planning records** contain expected income and planned obligations. They are projections until a user records or confirms an actual movement.
 - **Financial goals** use an auditable contribution/withdrawal ledger. Moving money toward a goal does not create bank income or expense.
 - **Reserves and investments** have their own movements, positions and (for investments) manual valuation snapshots. The wealth view is explicitly partial; it is not a complete net-worth calculation.
+
+At the parser boundary, OFX/CSV and other statement adapters may carry a signed source amount
+(`+` for income, `-` for expense). Import normalization derives `direction` from that sign and
+persists the absolute magnitude. Account reports then aggregate the positive stored amount using
+the direction filter. Other movement ledgers use positive amounts plus an explicit effect and
+apply that effect when calculating a balance.
 
 The same rule applies to budgets: a confirmed expense can contribute to category progress, but a pending import, a planned obligation, an income row or a duplicate skipped during confirmation cannot. Reclassifying a transaction changes its category, not its amount or ledger.
 

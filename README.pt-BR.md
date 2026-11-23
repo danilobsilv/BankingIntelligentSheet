@@ -58,8 +58,8 @@ O sistema é um monólito modular Spring Boot com PostgreSQL transacional e um f
 ```mermaid
 flowchart TB
     U[Usuário autenticado] --> WEB[Frontend React / TypeScript]
-    WEB -->|REST autenticado| API[Monólito modular Spring Boot]
-    subgraph API[Módulos da aplicação]
+    WEB -->|REST autenticado| BACKEND[Monólito modular Spring Boot]
+    subgraph MODULES[Módulos da aplicação]
       AUTH[Identidade e ownership]
       IMPORT[Parsers, prévias e confirmação]
       BANK[Contas e ledger bancário]
@@ -79,7 +79,7 @@ flowchart TB
     PLAN --> REPORT
     WEALTH --> REPORT
     RULES --> IMPORT
-    API --> DB[(PostgreSQL)]
+    BACKEND --> DB[(PostgreSQL)]
     MIG[Migrations Flyway] -.-> DB
 ```
 
@@ -87,11 +87,17 @@ O monólito reduz transações distribuídas e retries entre serviços enquanto 
 
 ## Modelo financeiro
 
-- **Contas correntes:** transações confirmadas representam fluxo de caixa realizado.
+- **Contas correntes:** transações confirmadas representam fluxo de caixa realizado. O `amount` persistido é uma magnitude positiva `NUMERIC(19,2)`; `direction` explicita `INCOME` ou `EXPENSE`, junto com ownership e proveniência.
 - **Cartões:** compras e faturas pertencem a um ledger separado; não há reconciliação automática entre compra e pagamento da fatura.
 - **Planejamento:** renda esperada e obrigações são projeções, não transações bancárias.
 - **Metas:** contribuições e saques alteram o progresso da meta, sem criar débito ou crédito bancário automático.
 - **Reservas e investimentos:** possuem movimentos e avaliações próprias; o patrimônio exibido é parcial, não um net worth completo.
+
+Na fronteira do parser, adaptadores OFX/CSV e outros perfis podem carregar um valor de origem com
+sinal (`+` para receita, `-` para despesa). A normalização deriva `direction` desse sinal e persiste
+a magnitude absoluta. Os relatórios bancários somam o valor positivo armazenado filtrando por
+direção. Outros ledgers usam valores positivos com um efeito explícito e aplicam esse efeito no
+cálculo do saldo.
 
 Orçamentos usam as transações confirmadas da competência. Rendas, prévias, duplicidades descartadas e operações de outros ledgers não entram como despesa. Alterar a categoria altera classificação, não valor ou origem.
 

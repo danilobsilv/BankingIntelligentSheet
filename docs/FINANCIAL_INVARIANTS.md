@@ -6,7 +6,7 @@ This note records the rules that keep a report from treating every monetary even
 
 | Record | Source of truth | Included in realized checking cash flow? | Important exclusion |
 | --- | --- | --- | --- |
-| Confirmed account transaction | Account transaction ledger | Yes, when its signed amount and date are valid | Pending previews and skipped duplicates |
+| Confirmed account transaction | Account transaction ledger | Yes, when its positive amount, direction and date are valid | Pending previews and skipped duplicates |
 | Credit-card purchase or invoice activity | Card ledger | No | Do not add card purchase and bank invoice payment together |
 | Expected income / planned expense | Planning ledger | No | A plan is not a payment |
 | Goal contribution / withdrawal | Goal movement ledger | No | Does not create an account transaction |
@@ -17,7 +17,7 @@ The reporting layer exposes these as labeled scopes. A partial wealth view conta
 
 ## Confirmation invariants
 
-The durable account ledger changes only after a user confirms a reviewable import or creates an explicit manual transaction. Import confirmation revalidates ownership, preview state, expiry, version and inclusion choices. It then writes the selected transactions, import-entry provenance, statement reservation and preview state in one database transaction.
+The durable account ledger changes only after a user confirms a reviewable import or creates an explicit manual transaction. Import confirmation revalidates ownership, preview state, expiry, version and inclusion choices. Statement parsers may represent source movements with a sign, but normalization derives `INCOME` or `EXPENSE` and stores the positive magnitude in the account `amount` column. The confirmation then writes the selected transactions, import-entry provenance, statement reservation and preview state in one database transaction.
 
 The resulting invariants are:
 
@@ -44,12 +44,19 @@ Budget alert state is derived from the same transaction query. Threshold transit
 
 ## Corrections and classification
 
-Changing a category changes classification, not the signed amount, account, source provenance or posting date. Deterministic categorization rules can suggest or explicitly reclassify eligible history, but manual classifications are protected unless the user chooses otherwise. A rule cannot create, delete or alter money.
+Changing a category changes classification, not the stored positive amount, direction, account, source provenance or posting date. Deterministic categorization rules can suggest or explicitly reclassify eligible history, but manual classifications are protected unless the user chooses otherwise. A rule cannot create, delete or alter money.
 
 Planning, goal, reserve and investment operations likewise change their own ledgers. They are deliberately not mirrored into checking transactions because doing so without an explicit reconciliation event would double-count cash flow.
 
 ## Concurrency and auditability
 
-Money is represented with PostgreSQL `NUMERIC` and Java `BigDecimal`. Services use transactions around related writes, user/account locks where a limit or ownership race matters, unique constraints for idempotency and optimistic versions for reviewable records. These are database-local guarantees; the design does not claim a distributed lock service.
+Money is represented with PostgreSQL `NUMERIC` and Java `BigDecimal`. Account transaction and
+preview amounts are positive magnitudes with an explicit `INCOME`/`EXPENSE` direction; parser
+values can be signed before normalization, and report queries aggregate the stored magnitude by
+direction. Goal and reserve movements likewise store positive amounts and use an explicit effect
+when calculating balances. Services use transactions around related writes, user/account locks
+where a limit or ownership race matters, unique constraints for idempotency and optimistic
+versions for reviewable records. These are database-local guarantees; the design does not claim a
+distributed lock service.
 
 For a deeper import-specific state model, see [Import pipeline](IMPORT_PIPELINE.md). For AI reservations and uncertain billing, see [AI safety](AI_SAFETY.md).
