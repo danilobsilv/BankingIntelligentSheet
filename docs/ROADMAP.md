@@ -6,6 +6,21 @@
 
 BIS uses **cohesive engineering flights**: establish financial invariants → design a limited domain increment → implement and test → review through PR/CI → verify in the browser → fold learnings into the next increment. Work is intentionally organized to avoid broad releases of unverified financial behavior.
 
+## How to read status
+
+The roadmap uses three deliberately different evidence levels:
+
+- **Implemented internally:** the private repositories contain the capability and its normal
+  automated checks. This says nothing about universal bank compatibility or production operations.
+- **Manually validated:** a documented supervised scenario passed with synthetic or explicitly
+  authorized data. It is stronger than an untested code path, but narrower than a release claim.
+- **Production-ready:** a future release gate requiring security, recovery, privacy, observability,
+  compatibility, accessibility and support evidence in addition to passing tests.
+
+An experimental feature can be implemented without being enabled. Operational flags, entitlements,
+consent and quotas are rollout controls, not substitutes for the evidence required to promote a
+capability.
+
 ```mermaid
 flowchart LR
     F[Foundation] --> I[Safe import core]
@@ -46,6 +61,9 @@ They do **not** certify every use case or replace security testing, bank-issued 
 - [ ] Review privacy, lifecycle/retention, and operational safety controls.
 - [ ] Validate deployment, backups/restoration, monitoring, and incident readiness.
 - [ ] Establish explicit release gates and support/feedback mechanisms.
+
+The beta decision must be made from this checklist and the evidence attached to the relevant
+implementation PRs. A green unit-test suite alone is not a beta approval signal.
 
 ## Exploring later — not current product promises
 

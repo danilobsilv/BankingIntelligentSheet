@@ -13,6 +13,12 @@ BIS treats document ingestion as a review workflow rather than a direct insert. 
 7. **Confirm explicitly.** The request carries the preview version and an idempotency key. The backend revalidates state, ownership, expiry and duplicate rules under a transaction before posting selected rows.
 8. **Report the outcome.** The preview becomes confirmed, cancelled or expired; audit and import-entry records preserve the result.
 
+For account statements, the signed parser amount is an input representation: positive means
+`INCOME` and negative means `EXPENSE`. At persistence, the backend stores the absolute magnitude
+in the `amount` column and stores the direction separately. This keeps database constraints and
+report aggregation explicit while preserving the original source meaning through the preview's
+explicit amount and direction fields.
+
 ## Why preview state is persisted
 
 Keeping a preview in the database lets the review survive a page refresh and gives confirmation a stable version to check. It also prevents a client from submitting a changed local copy after another operation has updated the preview. The cost is lifecycle management: expired previews and incomplete attempts need explicit retention and cleanup policies.

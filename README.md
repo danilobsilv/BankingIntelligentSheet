@@ -18,6 +18,33 @@ Personal-finance data is usually split between bank statements, card invoices, m
 
 BIS therefore treats automation as a proposal: **ingest → validate → review → confirm → report**. A planned bill is not a paid debit, a card purchase is not automatically a second bank expense, and a model-generated PDF extraction is not an authoritative financial record.
 
+## Implemented capability map
+
+The application repositories are private, so this table is a product and engineering status
+summary rather than a promise that every path is production-ready:
+
+| Capability | Current status | Evidence boundary |
+| --- | --- | --- |
+| Accounts, manual transactions, categories, dashboards and reports | Implemented internally | Synthetic data and supervised MVP validation |
+| OFX and registered CSV statement profiles | Implemented internally | Profile-specific tests; synthetic input does not certify arbitrary bank exports |
+| Credit cards, invoices and card import review | Implemented internally | Separate card ledger and selected integration coverage |
+| Budgets, goals, planning, reserves and investments | Implemented internally | Separate movement models; selected flows manually validated |
+| Categorization rules and historical reclassification | Implemented internally | Explicit preview/confirmation and protected manual classifications |
+| Free/Pro entitlements and operational feature flags | Implemented for controlled rollout | No checkout, public pricing or commercial subscription flow |
+| PDF extraction with Gemini | Experimentally gated | Consent, quota and cost controls; disabled by default |
+
+The distinction matters: an implemented module can still have open compatibility, recovery,
+accessibility or operational-readiness work. The public roadmap records those gaps instead of
+turning internal implementation into a launch claim.
+
+## Repository boundary
+
+This repository is the public engineering case study. The implementation is maintained in the
+[private backend repository](https://github.com/danilobsilv/BankingIntelligentSheet---Backend)
+and [private frontend repository](https://github.com/danilobsilv/BankingIntelligentSheet---Frontend).
+The links are provided for project context; this repository intentionally does not reproduce
+proprietary source, secrets, private fixtures or customer data.
+
 ## Engineering highlights
 
 ### 1. Confirmation is a financial transaction boundary
@@ -51,8 +78,8 @@ The implementation is a modular monolith: one Spring Boot application with domai
 ```mermaid
 flowchart TB
     USER[Authenticated user] --> WEB[React / TypeScript frontend]
-    WEB -->|REST + bearer auth| API[Spring Boot modular monolith]
-    subgraph API[Application modules]
+    WEB -->|REST + bearer auth| BACKEND[Spring Boot modular monolith]
+    subgraph MODULES[Application modules]
       AUTH[Identity & ownership]
       IMPORT[Import parsers, previews & confirmation]
       BANK[Accounts & checking ledger]
@@ -73,7 +100,7 @@ flowchart TB
     PLAN --> REPORTS
     WEALTH --> REPORTS
     RULES --> IMPORT
-    API --> DB[(PostgreSQL)]
+    BACKEND --> DB[(PostgreSQL)]
     MIG[Flyway migrations] -.-> DB
 ```
 
@@ -95,11 +122,17 @@ The monolith was chosen because confirmation, ownership and financial reconcilia
 
 The system distinguishes facts that are often collapsed by spreadsheet-style applications:
 
-- **Checking-account transactions** are confirmed realized cash flow. Positive and negative signed amounts are stored with account ownership and source provenance.
+- **Checking-account transactions** are confirmed realized cash flow. The persisted `amount` is a positive `NUMERIC(19,2)` magnitude, while `direction` is explicit `INCOME` or `EXPENSE`; ownership and source provenance are stored alongside it.
 - **Credit-card purchases and invoices** form a separate ledger. A card invoice payment may appear in a bank statement, but the product does not infer a purchase-to-payment relationship from description text and does not add both rows to the same expense total.
 - **Planning records** contain expected income and planned obligations. They are projections until a user records or confirms an actual movement.
 - **Financial goals** use an auditable contribution/withdrawal ledger. Moving money toward a goal does not create bank income or expense.
 - **Reserves and investments** have their own movements, positions and (for investments) manual valuation snapshots. The wealth view is explicitly partial; it is not a complete net-worth calculation.
+
+At the parser boundary, OFX/CSV and other statement adapters may carry a signed source amount
+(`+` for income, `-` for expense). Import normalization derives `direction` from that sign and
+persists the absolute magnitude. Account reports then aggregate the positive stored amount using
+the direction filter. Other movement ledgers use positive amounts plus an explicit effect and
+apply that effect when calculating a balance.
 
 The same rule applies to budgets: a confirmed expense can contribute to category progress, but a pending import, a planned obligation, an income row or a duplicate skipped during confirmation cannot. Reclassifying a transaction changes its category, not its amount or ledger.
 
@@ -129,6 +162,17 @@ sequenceDiagram
 
 The parser registry is profile-specific: a passing synthetic fixture is evidence for that profile, not universal bank compatibility. PDF AI adds external-consent, budget, evidence and reconciliation gates. Invalid documents, unsupported profiles, stale versions, ownership failures and ambiguous duplicates fail closed. See the [import deep dive](docs/IMPORT_PIPELINE.md) for the state and failure model.
 
+### Failure cases are part of the design
+
+| Failure or uncertainty | Expected behavior | Why it is preferable |
+| --- | --- | --- |
+| Unsupported file layout | Reject before creating a confirmed transaction | Prevents a permissive parser from inventing amounts or dates |
+| Expired or edited preview | Return a safe conflict and require a fresh review | Keeps the user-confirmed version authoritative |
+| Similar but unproven duplicate | Keep it reviewable or fail closed | Avoids deleting a legitimate repeated purchase |
+| Lost confirmation response | Reuse the original intent and reconcile the stored outcome | Prevents a browser retry from double-posting |
+| Cross-user identifier | Apply backend ownership filtering and return the existing safe error contract | Frontend navigation is not a security boundary |
+| AI provider failure with uncertain billing | Retain an observable `UNKNOWN_BILLING` state | Avoids treating uncertain provider cost as free quota |
+
 ## Reliability, consistency and concurrency
 
 Financial writes use PostgreSQL transactions because updating a preview, a statement reservation, account transactions and audit state independently would permit partial confirmation. Confirmation locks the relevant user/preview/account rows, checks the optimistic preview version and uses unique constraints as a second line of defense. A repeated idempotency key returns the recorded outcome rather than inserting another transaction.
@@ -145,6 +189,10 @@ For AI PDF processing, `AiBudgetGuard` estimates an upper bound from extracted t
 
 These controls are application safeguards, not a guarantee about Google's final invoice. The experimental feature is disabled by default and no provider credential belongs in the frontend. Details and operational limitations are in [AI safety](docs/AI_SAFETY.md).
 
+Rollout is deliberately staged: deterministic account flows are the baseline; new profiles and
+experimental AI operations require their own capability flag, entitlement, quota and fixture or
+integration evidence. A flag can stop new work without rewriting existing financial history.
+
 ## Testing and engineering quality
 
 The private implementation repositories use layered checks rather than relying on one end-to-end script:
@@ -156,6 +204,11 @@ The private implementation repositories use layered checks rather than relying o
 - GitHub Actions runs Maven formatting/verification, SpotBugs informational analysis, Trivy HIGH/CRITICAL scanning and Docker builds for the backend; the frontend workflow runs dependency installation, formatting, typecheck, lint, tests and image build.
 
 Representative integration suites include import preview/confirmation failure paths, budget PostgreSQL scenarios, categorization rule persistence, entitlement/feature management, analytics and card import. The public repository does not publish private source or claim a universal coverage percentage.
+
+The public repository itself is documentation-only. CI claims above refer to the private
+implementation repositories and their hosted workflows; they are not a claim that this repository
+builds the application. A green test run is evidence for the exercised contract, not evidence of
+all bank formats, all concurrency schedules or production availability.
 
 ## Current limitations
 

@@ -12,6 +12,25 @@
 - **Operational and commercial controls are independent.** Feature availability never replaces authentication, permissions, domain validation, or consent.
 - **Limited claims.** Experimental parsing and optional AI need their own compatibility, privacy, budget, and operational reviews before public use.
 
+## Threats, controls and evidence boundary
+
+The private implementation treats these as application-level security properties. The table
+describes the intended control and the evidence currently available; it is not an independent
+security audit or a claim that every endpoint has identical coverage.
+
+| Threat | Control used in the financial paths | Evidence / remaining limit |
+| --- | --- | --- |
+| Insecure direct object reference | Authenticated-user scope and ownership filters in reads and writes | Cross-user integration scenarios exist for exercised resources; a full external penetration test is not claimed |
+| Duplicate financial posting | Preview version, document reservations, operation keys, database uniqueness and transactions | Import retry/concurrency paths are tested; unusual provider/network schedules still require operational testing |
+| Forged or ambiguous imported values | Profile validation, source provenance, explicit review and confirmation | Synthetic and authorized profile fixtures are bounded; arbitrary bank formats remain unsupported |
+| Unauthorized experimental AI use | Consent, capability/entitlement, quota reservation and persistent kill switch | AI is disabled by default; provider billing and retention remain external dependencies |
+| Secret or personal-data disclosure | Credentials stay outside the frontend/public repository; logs and public docs omit raw documents | Deployment logging, retention and incident procedures remain pre-beta work |
+| Stale or conflicting review state | Optimistic versions, expiry checks and row locking before confirmation | Guarantees are database-local; no distributed lock or multi-region claim is made |
+
+The frontend may hide unavailable actions for usability, but it is never the authorization boundary.
+Backend checks must remain authoritative for ownership, entitlements, quotas, consent and financial
+state transitions.
+
 ## Sensitive-data lifecycle
 
 Raw documents are processed within bounded import workflows, while temporary normalized review records and confirmed financial/audit records have distinct purposes. Temporary data lifecycle and production retention/deletion policy are subject to pre-beta validation; this page intentionally states no universal deletion guarantees.
